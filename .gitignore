@@ -95,3 +95,6 @@ vault/dev/*
 vault/prod/*
 !vault/dev/.gitkeep
 !vault/prod/.gitkeep
+
+# Generated blog assets
+docs/blog-cover.png

@@ -1,5 +1,7 @@
 # Deploying Node.js Applications with Ansible, NVM, PM2, Nginx, and Let's Encrypt
 
+![Cover illustration for the Node.js Ansible deployment article](blog-cover.png)
+
 Deploying a Node.js application is rarely just one task. A practical deployment has to prepare the server, install a predictable runtime, fetch private code, manage long-running processes, configure Nginx, handle TLS, and leave enough structure behind that the next deployment is boring.
 
 This repository captures that workflow as an Ansible project. Its main playbook provisions a server and deploys two common kinds of frontend and backend workloads:
