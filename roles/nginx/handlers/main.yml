@@ -1,0 +1,10 @@
+- name: nginx configtest
+  ansible.builtin.command: nginx -t
+  changed_when: false
+  listen: reload nginx
+
+- name: nginx reload
+  ansible.builtin.service:
+    name: nginx
+    state: reloaded
+  listen: reload nginx

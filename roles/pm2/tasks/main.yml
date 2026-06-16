@@ -1,0 +1,31 @@
+- name: Install PM2 globally using NVM npm
+  become: true
+  become_user: "{{ developer_user }}"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    export NVM_DIR="{{ developer_home }}/.nvm"
+    . "$NVM_DIR/nvm.sh"
+    nvm use {{ node_default_version }}
+    npm install -g pm2
+    pm2 -v
+  args:
+    executable: /bin/bash
+    creates: "{{ developer_home }}/.nvm/versions/node/v{{ node_default_version }}/bin/pm2"
+  tags: [prereq]
+
+- name: Install systemd service for pm2
+  ansible.builtin.template:
+    src: pm2.service.j2
+    dest: "/etc/systemd/system/pm2-{{ developer_user }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  # notify: restart pm2 service
+  tags: [prereq]
+
+- name: Enable pm2 service
+  ansible.builtin.systemd:
+    name: "pm2-{{ developer_user }}"
+    enabled: true
+    daemon_reload: true
+  tags: [prereq]

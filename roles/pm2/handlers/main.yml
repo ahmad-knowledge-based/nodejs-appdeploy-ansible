@@ -1,0 +1,5 @@
+- name: restart pm2 service
+  ansible.builtin.systemd:
+    name: "pm2-{{ developer_user }}"
+    state: restarted
+    daemon_reload: true

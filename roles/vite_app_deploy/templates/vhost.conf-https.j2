@@ -1,0 +1,57 @@
+server {
+    listen 80;
+    server_name {{ vite_app.domain }};
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name {{ vite_app.domain }};
+
+    access_log /var/log/nginx/{{ vite_app.domain }}.access.log;
+    error_log /var/log/nginx/{{ vite_app.domain }}.error.log warn;
+
+    keepalive_timeout 300;
+
+    proxy_connect_timeout 300s;
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+
+    # SSL Settings
+    ssl_certificate     {{ vite_app.ssl_fullchain }};
+    ssl_certificate_key {{ vite_app.ssl_privkey }};
+
+    resolver 8.8.8.8 203.119.13.77;
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN";
+    add_header X-Content-Type-Options "nosniff";
+    add_header X-XSS-Protection "1; mode=block";
+
+    # Document root pointing to SPA build output
+    root {{ vite_app.static_root }};
+    index index.html;
+
+    charset utf-8;
+
+    # Main location block for SPA routing
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Cache static assets aggressively
+    location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+
+    # Security: deny access to hidden files
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+
+    location ~ /\.(htaccess|git|gitignore|gitconfig|svn|bzr|DS_Store|env|htpasswd|ssh|bash_history|bashrc|bash_profile|bash_logout|mysql_history|pgpass|netrc|aws|docker|npmrc|nvmrc|composer|vscode) {
+        deny all;
+    }
+}

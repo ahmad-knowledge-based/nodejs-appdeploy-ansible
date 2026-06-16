@@ -1,0 +1,168 @@
+- name: Compute repo URL with embedded auth (HTTPS)
+  ansible.builtin.set_fact:
+    vite_app_deploy_repo_with_auth: >-
+      {{
+        vite_app.repo | regex_replace(
+          '^https://',
+          'https://' ~ vite_app_deploy_github_username ~ ':' ~
+          vite_app_deploy_github_token ~ '@'
+        )
+      }}
+  no_log: true
+  tags:
+    - vite_code
+
+
+- name: Ensure app directory parent exists
+  ansible.builtin.file:
+    path: "{{ vite_app.app_dir | dirname }}"
+    state: directory
+    owner: "{{ vite_app_deploy_developer_user }}"
+    group: "{{ vite_app_deploy_developer_user }}"
+    mode: "0755"
+  tags:
+    - vite_code
+
+- name: Clone/update repo (HTTPS with embedded token)
+  become: true
+  become_user: "{{ vite_app_deploy_developer_user }}"
+  ansible.builtin.git:
+    repo: "{{ vite_app_deploy_repo_with_auth }}"
+    dest: "{{ vite_app.app_dir }}"
+    version: "{{ vite_app.branch | default('dev') }}"
+    update: true
+    force: true
+  no_log: true
+  tags:
+    - vite_code
+
+- name: Set origin back to clean URL when configured
+  become: true
+  become_user: "{{ vite_app_deploy_developer_user }}"
+  ansible.builtin.command: "git remote set-url origin {{ vite_app.repo }}"  # noqa: command-instead-of-module
+  args:
+    chdir: "{{ vite_app.app_dir }}"
+  changed_when: true
+  when: not (vite_app_deploy_github_persist_auth_in_remote | bool)
+  tags:
+    - vite_code
+
+
+- name: Deploy .env (secure) - only when env_src provided
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../{{ vite_app.env_src }}"
+    dest: "{{ vite_app.app_dir }}/.env"
+    owner: "{{ vite_app_deploy_developer_user }}"
+    group: "{{ vite_app_deploy_developer_user }}"
+    mode: "0600"
+  no_log: true
+  when: vite_app.env_src is defined and (vite_app.env_src | trim | length) > 0
+  tags:
+    - vite_code
+
+
+- name: Check for package-lock.json
+  become: true
+  become_user: "{{ vite_app_deploy_developer_user }}"
+  ansible.builtin.stat:
+    path: "{{ vite_app.app_dir }}/package-lock.json"
+  register: vite_app_deploy_lockfile
+  tags:
+    - vite_code
+
+- name: Install deps (override)
+  become: true
+  become_user: "{{ vite_app_deploy_developer_user }}"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    export NVM_DIR="{{ vite_app_deploy_developer_home }}/.nvm"
+    . "$NVM_DIR/nvm.sh"
+    nvm use {{ vite_app.node_version | default(vite_app_deploy_node_default_version) }}
+    {{ vite_app.npm_install_cmd }}
+  args:
+    executable: /bin/bash
+    chdir: "{{ vite_app.app_dir }}"
+  changed_when: true
+  when:
+    - (vite_app.needs_install | default(true)) | bool
+    - (vite_app.npm_install_cmd | default('') | trim | length) > 0
+  tags:
+    - vite_code
+
+- name: Install deps (auto)
+  become: true
+  become_user: "{{ vite_app_deploy_developer_user }}"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    export NVM_DIR="{{ vite_app_deploy_developer_home }}/.nvm"
+    . "$NVM_DIR/nvm.sh"
+    nvm use {{ vite_app.node_version | default(vite_app_deploy_node_default_version) }}
+
+    if [ "{{ vite_app_deploy_lockfile.stat.exists | bool }}" = "True" ]; then
+      npm ci --legacy-peer-deps --no-audit --no-fund --prefer-offline
+    else
+      npm install --legacy-peer-deps --no-audit --no-fund --prefer-offline
+    fi
+  args:
+    executable: /bin/bash
+    chdir: "{{ vite_app.app_dir }}"
+  changed_when: true
+  when:
+    - (vite_app.needs_install | default(true)) | bool
+    - (vite_app.npm_install_cmd | default('') | trim | length) == 0
+  tags:
+    - vite_code
+
+- name: Build app (NVM) - only when needed
+  become: true
+  become_user: "{{ vite_app_deploy_developer_user }}"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    export NVM_DIR="{{ vite_app_deploy_developer_home }}/.nvm"
+    . "$NVM_DIR/nvm.sh"
+    nvm use {{ vite_app.node_version | default(vite_app_deploy_node_default_version) }}
+    {{ vite_app.npm_build_cmd | default('npm run build') }}
+  args:
+    executable: /bin/bash
+    chdir: "{{ vite_app.app_dir }}"
+  changed_when: true
+  when: vite_app.needs_build | bool
+  tags:
+    - vite_code
+
+
+# -------------------------
+# NGINX vhost provisioning
+# -------------------------
+- name: Write nginx vhost http
+  ansible.builtin.template:
+    src: vhost.conf-http.j2
+    dest: "/etc/nginx/sites-available/{{ vite_app.domain }}.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: reload nginx
+  when: vite_app.ssl_fullchain is not defined or vite_app.ssl_privkey is not defined
+  tags:
+    - vite_nginx
+
+- name: Write nginx vhost SSL (if certs is exist)
+  ansible.builtin.template:
+    src: vhost.conf-https.j2
+    dest: "/etc/nginx/sites-available/{{ vite_app.domain }}.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: reload nginx
+  when: vite_app.ssl_fullchain is defined or vite_app.ssl_privkey is defined
+  tags:
+    - vite_nginx
+
+- name: Enable nginx vhost
+  ansible.builtin.file:
+    src: "/etc/nginx/sites-available/{{ vite_app.domain }}.conf"
+    dest: "/etc/nginx/sites-enabled/{{ vite_app.domain }}.conf"
+    state: link
+  notify: reload nginx
+  tags:
+    - vite_nginx

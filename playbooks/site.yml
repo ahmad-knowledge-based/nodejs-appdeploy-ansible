@@ -1,0 +1,54 @@
+- name: Provision prerequisites + deploy apps
+  hosts: all
+  become: true
+  become_method: sudo
+
+  vars_files:
+    - "{{ playbook_dir }}/../vault/github_token.yml"
+
+  roles:
+    - role: base_user
+      tags:
+        - prereq
+    - nodejs
+    - pm2
+    - nginx
+
+  tasks:
+    - name: Provision Let's Encrypt certificates
+      ansible.builtin.include_role:
+        name: letsencrypt
+        apply:
+          tags:
+            - letsencrypt
+      tags:
+        - letsencrypt
+
+    - name: Deploy each app
+      ansible.builtin.include_role:
+        name: app_deploy
+        apply:
+          tags:
+            - deploy
+      loop: "{{ apps | default([]) }}"
+      loop_control:
+        loop_var: app
+      tags:
+        - deploy
+        - app_code
+        - app_pm2
+        - app_nginx
+
+    - name: Deploy vite apps
+      ansible.builtin.include_role:
+        name: vite_app_deploy
+        apply:
+          tags:
+            - vite_deploy
+      loop: "{{ vite_apps | default([]) }}"
+      loop_control:
+        loop_var: vite_app
+      tags:
+        - vite_deploy
+        - vite_code
+        - vite_nginx

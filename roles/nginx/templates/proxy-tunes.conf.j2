@@ -1,0 +1,2 @@
+proxy_buffers {{ nginx_proxy_buffers | default('8 16k') }};
+proxy_buffer_size {{ nginx_proxy_buffer_size | default('32k') }};

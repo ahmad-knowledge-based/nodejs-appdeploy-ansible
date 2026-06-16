@@ -1,0 +1,26 @@
+- name: Install certbot packages
+  ansible.builtin.apt:
+    name: "{{ letsencrypt_certbot_packages }}"
+    update_cache: true
+  when: letsencrypt_enable | bool
+  tags: [letsencrypt]
+
+- name: Ensure letsencrypt challenge webroot exists
+  ansible.builtin.file:
+    path: "{{ letsencrypt_challenge_webroot }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: letsencrypt_enable | bool
+  tags: [letsencrypt]
+
+- name: Manage Let's Encrypt certificates per domain
+  ansible.builtin.include_tasks: domain.yml
+  loop: "{{ letsencrypt_domains }}"
+  loop_control:
+    loop_var: letsencrypt_domain
+  when:
+    - letsencrypt_enable | bool
+    - (letsencrypt_domains | default([]) | length) > 0
+  tags: [letsencrypt]

@@ -1,0 +1,3 @@
+# Copy this file to vault/github_token.yml and encrypt it with ansible-vault
+# before using it with real infrastructure.
+github_token: "replace-with-github-personal-access-token"

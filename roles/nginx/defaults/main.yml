@@ -1,0 +1,2 @@
+# nginx_proxy_buffers: "8 16k"
+# nginx_proxy_buffer_size: "32k"

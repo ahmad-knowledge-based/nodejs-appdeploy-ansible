@@ -1,0 +1,22 @@
+developer_user: developer
+developer_home: /home/developer
+
+# Git HTTPS auth (PAT) - store token in Vault in real usage
+github_username: "your-github-username"
+github_persist_auth_in_remote: true
+
+# -------------------------
+# NVM / Node setup
+# -------------------------
+nvm_version: "v0.40.3"
+node_versions:
+  - "24.11.1"
+node_default_version: "24.11.1"
+
+# NGINX proxy tuning (template-driven)
+nginx_proxy_buffers: "8 16k"
+nginx_proxy_buffer_size: "32k"
+
+# Let's Encrypt / Certbot
+letsencrypt_email: "admin@example.com"
+letsencrypt_staging: false

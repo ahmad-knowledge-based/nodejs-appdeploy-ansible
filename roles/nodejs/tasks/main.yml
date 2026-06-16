@@ -1,0 +1,99 @@
+- name: Assert every selected Node version is in node_versions (install manifest)
+  ansible.builtin.assert:
+    that:
+      - node_missing_versions | length == 0
+    fail_msg: >-
+      Node version(s) {{ node_missing_versions | join(', ') }} are selected by
+      node_default_version or a per-app node_version, but are not present in
+      node_versions, so the nodejs role never installs them. Add them to
+      node_versions in group_vars/all.yml (or fix the selector).
+    success_msg: "All selected Node versions are present in node_versions."
+    quiet: true
+  vars:
+    node_selected_versions: >-
+      {{ ([node_default_version]
+          + (apps | default([]) | selectattr('node_version', 'defined') | map(attribute='node_version') | list)
+          + (vite_apps | default([]) | selectattr('node_version', 'defined') | map(attribute='node_version') | list)
+         ) | unique }}
+    node_missing_versions: "{{ node_selected_versions | difference(node_versions) }}"
+  tags:
+    - prereq
+    - deploy
+    - app_code
+    - app_pm2
+    - vite_deploy
+    - vite_code
+
+- name: Install OS packages required by NVM
+  ansible.builtin.apt:
+    name:
+      - curl
+      - ca-certificates
+      - git
+      - build-essential
+    update_cache: true
+  tags: [prereq]
+
+- name: Ensure developer home exists
+  ansible.builtin.file:
+    path: "{{ developer_home }}"
+    state: directory
+    owner: "{{ developer_user }}"
+    group: "{{ developer_user }}"
+    mode: "0755"
+  tags: [prereq]
+
+# Install NVM using the official install script (no submodule ssh issue)
+- name: Install NVM via install.sh (official method)
+  become_user: "{{ developer_user }}"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    export PROFILE=/dev/null
+    if [ ! -s "{{ developer_home }}/.nvm/nvm.sh" ]; then
+      curl -o- "https://raw.githubusercontent.com/nvm-sh/nvm/{{ nvm_version }}/install.sh" | bash
+    fi
+  args:
+    executable: /bin/bash
+    creates: "{{ developer_home }}/.nvm/nvm.sh"
+  tags: [prereq]
+
+- name: Ensure NVM is loaded in ~/.bashrc
+  ansible.builtin.blockinfile:
+    path: "{{ developer_home }}/.bashrc"
+    create: true
+    owner: "{{ developer_user }}"
+    group: "{{ developer_user }}"
+    mode: "0644"
+    marker: "# {mark} ANSIBLE MANAGED BLOCK: NVM"
+    block: |
+      export NVM_DIR="$HOME/.nvm"
+      [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+      [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+  tags: [prereq]
+
+- name: Install Node versions via NVM
+  become_user: "{{ developer_user }}"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    export NVM_DIR="{{ developer_home }}/.nvm"
+    . "$NVM_DIR/nvm.sh"
+    nvm install {{ item }}
+  args:
+    executable: /bin/bash
+    creates: "{{ developer_home }}/.nvm/versions/node/v{{ item }}/bin/node"
+  loop: "{{ node_versions }}"
+  tags: [prereq]
+
+- name: Set default Node version
+  become_user: "{{ developer_user }}"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    export NVM_DIR="{{ developer_home }}/.nvm"
+    . "$NVM_DIR/nvm.sh"
+    nvm alias default {{ node_default_version }}
+    nvm use default
+    node -v
+    npm -v
+  args:
+    executable: /bin/bash
+  tags: [prereq]

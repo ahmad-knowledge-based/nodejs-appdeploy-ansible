@@ -1,0 +1,21 @@
+[Unit]
+Description=PM2 process manager for {{ developer_user }}
+After=network.target
+
+[Service]
+Type=forking
+User={{ developer_user }}
+LimitNOFILE=infinity
+LimitNPROC=infinity
+LimitCORE=infinity
+Environment=PATH={{ developer_home }}/.nvm/versions/node/v{{ node_default_version }}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=PM2_HOME={{ developer_home }}/.pm2
+PIDFile={{ developer_home }}/.pm2/pm2.pid
+Restart=on-failure
+
+ExecStart={{ developer_home }}/.nvm/versions/node/v{{ node_default_version }}/bin/pm2 resurrect
+ExecReload={{ developer_home }}/.nvm/versions/node/v{{ node_default_version }}/bin/pm2 reload all
+ExecStop={{ developer_home }}/.nvm/versions/node/v{{ node_default_version }}/bin/pm2 kill
+
+[Install]
+WantedBy=multi-user.target

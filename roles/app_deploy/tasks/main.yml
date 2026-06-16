@@ -1,0 +1,202 @@
+- name: Compute repo URL with embedded auth (HTTPS)
+  ansible.builtin.set_fact:
+    app_deploy_repo_with_auth: "{{ app.repo | regex_replace('^https://', 'https://' ~ app_deploy_github_username ~ ':' ~ app_deploy_github_token ~ '@') }}"
+  no_log: true
+  tags:
+    - app_code
+
+- name: Ensure app directory parent exists
+  ansible.builtin.file:
+    path: "{{ app.app_dir | dirname }}"
+    state: directory
+    owner: "{{ app_deploy_developer_user }}"
+    group: "{{ app_deploy_developer_user }}"
+    mode: "0755"
+  tags:
+    - app_code
+
+- name: Clone/update repo (HTTPS with embedded token)
+  become: true
+  become_user: "{{ app_deploy_developer_user }}"
+  ansible.builtin.git:
+    repo: "{{ app_deploy_repo_with_auth }}"
+    dest: "{{ app.app_dir }}"
+    version: "{{ app.branch | default('dev') }}"
+    update: true
+    force: true
+  no_log: true
+  tags:
+    - app_code
+
+- name: Set origin back to clean URL when configured
+  become: true
+  become_user: "{{ app_deploy_developer_user }}"
+  ansible.builtin.command: "git remote set-url origin {{ app.repo }}"  # noqa: command-instead-of-module
+  args:
+    chdir: "{{ app.app_dir }}"
+  changed_when: true
+  when: not (app_deploy_github_persist_auth_in_remote | bool)
+  tags:
+    - app_code
+
+- name: Deploy .env (secure)
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../{{ app.env_src }}"
+    dest: "{{ app.app_dir }}/.env"
+    owner: "{{ app_deploy_developer_user }}"
+    group: "{{ app_deploy_developer_user }}"
+    mode: "0600"
+  no_log: true
+  tags:
+    - app_code
+
+
+- name: Check for package-lock.json
+  become: true
+  become_user: "{{ app_deploy_developer_user }}"
+  ansible.builtin.stat:
+    path: "{{ app.app_dir }}/package-lock.json"
+  register: app_deploy_lockfile
+  tags:
+    - app_code
+
+- name: Install deps (auto, or override)
+  become: true
+  become_user: "{{ app_deploy_developer_user }}"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    export NVM_DIR="{{ app_deploy_developer_home }}/.nvm"
+    . "$NVM_DIR/nvm.sh"
+    nvm use {{ app.node_version | default(app_deploy_node_default_version) }}
+
+    if [ -n "{{ app.npm_install_cmd | default('') }}" ]; then
+      {{ app.npm_install_cmd }}
+    else
+      if [ "{{ app_deploy_lockfile.stat.exists | bool }}" = "True" ]; then
+        npm ci --no-audit --no-fund --prefer-offline
+      else
+        npm install --no-audit --no-fund --prefer-offline
+      fi
+    fi
+  args:
+    executable: /bin/bash
+    chdir: "{{ app.app_dir }}"
+  changed_when: true
+  when: app.needs_install | default(true) | bool
+  tags:
+    - app_code
+
+- name: Build app (NVM) - only when needed
+  become: true
+  become_user: "{{ app_deploy_developer_user }}"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    export NVM_DIR="{{ app_deploy_developer_home }}/.nvm"
+    . "$NVM_DIR/nvm.sh"
+    nvm use {{ app.node_version | default(app_deploy_node_default_version) }}
+    {{ app.npm_build_cmd | default('npm run build') }}
+  args:
+    executable: /bin/bash
+    chdir: "{{ app.app_dir }}"
+  changed_when: true
+  when: app.needs_build | default((app.pm2_mode | default('ecosystem')) == 'ecosystem') | bool
+  tags:
+    - app_code
+
+# - name: Render pm2 ecosystem file
+#   ansible.builtin.template:
+#     src: ecosystem.config.cjs.j2
+#     dest: "{{ app.app_dir }}/ecosystem.config.cjs"
+#     owner: "{{ app_deploy_developer_user }}"
+#     group: "{{ app_deploy_developer_user }}"
+#     mode: "0644"
+
+- name: PM2 - Start/Restart using ecosystem (npm-based apps)
+  become: true
+  become_user: "{{ app_deploy_developer_user }}"
+  ansible.builtin.command: "pm2 startOrRestart ecosystem.config.cjs"
+  args:
+    chdir: "{{ app.app_dir }}"
+  environment:
+    PATH: >-
+      {{ app_deploy_developer_home }}/.nvm/versions/node/v{{ app.node_version | default(app_deploy_node_default_version) }}/bin:
+      /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    PM2_HOME: "{{ app_deploy_developer_home }}/.pm2"
+  changed_when: true
+  when: (app.pm2_mode | default('ecosystem')) == 'ecosystem'
+  tags:
+    - app_pm2
+
+- name: PM2 - Recreate script process fresh (stop + delete + start)
+  become: true
+  become_user: "{{ app_deploy_developer_user }}"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    # Tear down any existing process so redeploys never reuse a stuck/old fork.
+    if pm2 describe "{{ app.name }}" >/dev/null 2>&1; then
+      pm2 stop "{{ app.name }}" || true
+      pm2 delete "{{ app.name }}"
+    fi
+    pm2 start "{{ app.pm2_script }}" --name "{{ app.name }}" --time {{ app.pm2_args | default('') }}
+  args:
+    executable: /bin/bash
+    chdir: "{{ app.app_dir }}"
+  environment:
+    PATH: >-
+      {{ app_deploy_developer_home }}/.nvm/versions/node/v{{ app.node_version | default(app_deploy_node_default_version) }}/bin:
+      /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    PM2_HOME: "{{ app_deploy_developer_home }}/.pm2"
+  changed_when: true
+  when: (app.pm2_mode | default('ecosystem')) == 'script'
+  tags:
+    - app_pm2
+
+- name: PM2 - Save process list (persist across reboot)
+  become: true
+  become_user: "{{ app_deploy_developer_user }}"
+  ansible.builtin.command: "pm2 save"
+  environment:
+    PATH: >-
+      {{ app_deploy_developer_home }}/.nvm/versions/node/v{{ app.node_version | default(app_deploy_node_default_version) }}/bin:
+      /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    PM2_HOME: "{{ app_deploy_developer_home }}/.pm2"
+  changed_when: true
+  tags:
+    - app_pm2
+
+
+# -------------------------
+# NGINX vhost provisioning
+# -------------------------
+- name: Write nginx vhost http
+  ansible.builtin.template:
+    src: vhost.conf-http.j2
+    dest: "/etc/nginx/sites-available/{{ app.domain }}.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: reload nginx
+  when: app.ssl_fullchain is not defined or app.ssl_privkey is not defined
+  tags:
+    - app_nginx
+
+- name: Write nginx vhost for SSL (if certs exist)
+  ansible.builtin.template:
+    src: vhost.conf-https.j2
+    dest: "/etc/nginx/sites-available/{{ app.domain }}.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: reload nginx
+  when: app.ssl_fullchain is defined and app.ssl_privkey is defined
+  tags:
+    - app_nginx
+
+- name: Enable nginx vhost
+  ansible.builtin.file:
+    src: "/etc/nginx/sites-available/{{ app.domain }}.conf"
+    dest: "/etc/nginx/sites-enabled/{{ app.domain }}.conf"
+    state: link
+  notify: reload nginx
+  tags:
+    - app_nginx

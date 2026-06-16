@@ -1,0 +1,5 @@
+# Intentionally empty.
+# This role uses shared variables from inventory group_vars (all.yml):
+# - developer_user
+# - developer_home
+# - node_default_version

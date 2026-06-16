@@ -1,0 +1,15 @@
+letsencrypt_enable: true
+letsencrypt_domains: >-
+  {{
+    ((apps | default([])) + (vite_apps | default([])))
+    | map(attribute='domain')
+    | select('defined')
+    | list
+    | unique
+  }}
+letsencrypt_email: ""
+letsencrypt_staging: false
+letsencrypt_certbot_packages:
+  - certbot
+  - python3-certbot-nginx
+letsencrypt_challenge_webroot: /var/www/letsencrypt

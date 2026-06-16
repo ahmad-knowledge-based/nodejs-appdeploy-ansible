@@ -1,0 +1,7 @@
+app_deploy_developer_user: "{{ developer_user | default('developer') }}"
+app_deploy_developer_home: "{{ developer_home | default('/home/developer') }}"
+app_deploy_node_default_version: "{{ node_default_version | default('24.14.0') }}"
+
+app_deploy_github_username: "{{ github_username | default('') }}"
+app_deploy_github_token: "{{ github_token | default('') }}"
+app_deploy_github_persist_auth_in_remote: "{{ github_persist_auth_in_remote | default(true) }}"

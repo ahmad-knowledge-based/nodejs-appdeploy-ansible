@@ -1,0 +1,59 @@
+- name: Check if certificate already exists
+  ansible.builtin.stat:
+    path: "/etc/letsencrypt/live/{{ letsencrypt_domain }}/fullchain.pem"
+  register: letsencrypt_cert_stat
+
+- name: Render temporary nginx vhost for ACME challenge
+  ansible.builtin.template:
+    src: http-challenge-vhost.conf.j2
+    dest: "/etc/nginx/sites-available/letsencrypt-{{ letsencrypt_domain }}.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  when: not letsencrypt_cert_stat.stat.exists
+
+- name: Enable temporary nginx vhost for ACME challenge
+  ansible.builtin.file:
+    src: "/etc/nginx/sites-available/letsencrypt-{{ letsencrypt_domain }}.conf"
+    dest: "/etc/nginx/sites-enabled/letsencrypt-{{ letsencrypt_domain }}.conf"
+    state: link
+  when: not letsencrypt_cert_stat.stat.exists
+
+- name: Reload nginx before certificate request
+  ansible.builtin.service:
+    name: nginx
+    state: reloaded
+  when: not letsencrypt_cert_stat.stat.exists
+
+- name: Request Let's Encrypt certificate with nginx plugin
+  ansible.builtin.command:
+    argv: "{{ letsencrypt_certbot_argv }}"
+  vars:
+    letsencrypt_certbot_argv: >-
+      {{
+        ['certbot', 'certonly', '--nginx', '--non-interactive', '--agree-tos', '-d', letsencrypt_domain]
+        + (['-m', letsencrypt_email] if (letsencrypt_email | trim | length) > 0 else ['--register-unsafely-without-email'])
+        + (['--staging'] if (letsencrypt_staging | bool) else [])
+        + ['--keep-until-expiring']
+      }}
+  register: letsencrypt_certbot_result
+  changed_when: letsencrypt_certbot_result.rc == 0
+  when: not letsencrypt_cert_stat.stat.exists
+
+- name: Disable temporary nginx vhost after certificate request
+  ansible.builtin.file:
+    path: "/etc/nginx/sites-enabled/letsencrypt-{{ letsencrypt_domain }}.conf"
+    state: absent
+  when: not letsencrypt_cert_stat.stat.exists
+
+- name: Remove temporary nginx vhost after certificate request
+  ansible.builtin.file:
+    path: "/etc/nginx/sites-available/letsencrypt-{{ letsencrypt_domain }}.conf"
+    state: absent
+  when: not letsencrypt_cert_stat.stat.exists
+
+- name: Reload nginx after certificate request
+  ansible.builtin.service:
+    name: nginx
+    state: reloaded
+  when: not letsencrypt_cert_stat.stat.exists

@@ -1,0 +1,35 @@
+default_branch: "dev"
+
+apps:
+  - name: example-node-dev
+    domain: dev-app.example.com
+    port: 3000
+    repo: "https://github.com/example-org/example-node-app.git"
+    branch: "{{ default_branch }}"
+    app_dir: "{{ developer_home }}/example-node-dev"
+    env_src: "vault/dev/example-node-dev.env"
+
+    needs_build: true
+    needs_install: true
+
+    pm2_mode: "ecosystem"
+    npm_install_cmd: "npm install"
+    npm_build_cmd: "npm run build"
+
+    ssl_fullchain: "/etc/letsencrypt/live/example.com/fullchain.pem"
+    ssl_privkey: "/etc/letsencrypt/live/example.com/privkey.pem"
+
+# vite_apps:
+#   - name: example-vite-dev
+#     domain: dev-static.example.com
+#     repo: "https://github.com/example-org/example-vite-app.git"
+#     branch: "{{ default_branch }}"
+#     app_dir: "{{ developer_home }}/example-vite-dev"
+#     env_src: "vault/dev/example-vite-dev.env"
+#     static_root: "{{ developer_home }}/example-vite-dev/dist"
+#     needs_install: true
+#     needs_build: true
+#     npm_install_cmd: "npm install"
+#     npm_build_cmd: "npm run build"
+#     ssl_fullchain: "/etc/letsencrypt/live/example.com/fullchain.pem"
+#     ssl_privkey: "/etc/letsencrypt/live/example.com/privkey.pem"

@@ -1,0 +1,19 @@
+- name: Install ACL tools (required for become_user tempfiles)
+  ansible.builtin.apt:
+    name: acl
+    update_cache: true
+
+- name: Ensure developer user exists
+  ansible.builtin.user:
+    name: "{{ developer_user }}"
+    home: "{{ developer_home }}"
+    shell: /bin/bash
+    create_home: true
+
+- name: Ensure developer home perms
+  ansible.builtin.file:
+    path: "{{ developer_home }}"
+    state: directory
+    owner: "{{ developer_user }}"
+    group: "{{ developer_user }}"
+    mode: "0755"

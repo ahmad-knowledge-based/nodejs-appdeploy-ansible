@@ -1,0 +1,97 @@
+# =========================
+# OS / Editor / IDE
+# =========================
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.tmp
+*.bak
+*.orig
+*.rej
+
+.vscode/
+.idea/
+*.iml
+
+# =========================
+# Python / Ansible caches
+# =========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ansible retry files
+*.retry
+
+# Some tools may create these
+.cache/
+.tmp/
+.ansible/
+.codex
+logs/
+log/
+
+# =========================
+# SSH keys / sensitive files (DO NOT COMMIT)
+# =========================
+*.pem
+*.key
+*.crt
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+*.ppk
+
+# Vault password files (never commit)
+.vault_pass
+.vault-pass
+vault_pass.txt
+vault-password.txt
+
+# =========================
+# Secrets / environment files
+# =========================
+# Ignore plaintext .env files anywhere
+.env
+*.env
+
+# Keep local vault/env material out of the public branch.
+# Track sanitized example files instead, e.g. vault/github_token.example.yml.
+
+# If you ever keep other secret formats, ignore plaintext variants:
+*.secret
+*.secrets
+secrets.yml
+secrets.yaml
+secret.yml
+secret.yaml
+
+# =========================
+# Inventory local overrides
+# =========================
+# If you create local inventory overrides, ignore them
+inventories/**/hosts.local.ini
+inventories/**/host_vars/*.local.yml
+inventories/**/group_vars/*.local.yml
+
+# =========================
+# Galaxy / Collections (optional)
+# =========================
+# If you install dependencies locally inside repo:
+collections/
+roles/requirements.yml.lock
+requirements.yml.lock
+
+# =========================
+# Ansible config local override (optional)
+# =========================
+ansible.cfg.local
+
+vault/github_token.yml
+vault/dev/*
+vault/prod/*
+!vault/dev/.gitkeep
+!vault/prod/.gitkeep
